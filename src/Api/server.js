@@ -10,7 +10,7 @@ import UserRoute from "../Api/routes/user.js";
 const app = express();
 const port = process.env.API_PORT;
 
-const allowedOrigins = ["http://localhost:3000", "http://192.168.0.101:3000"];
+//const allowedOrigins = ["http://localhost:3000", "http://192.168.0.101:3000"];
 
 mongoose.set("strictQuery", false);
 mongoose.set("strictPopulate", false);
@@ -22,7 +22,7 @@ mongoose
   .then(() => {
     app.use(
       cors({
-        origin: "http://localhost:3000",
+        origin: process.env.FRONT_END_API_URL,
         credentials: true
       }),
     );
