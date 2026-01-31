@@ -1,0 +1,40 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\.011c5bf819558e8e5aba4bb4bab83ed5d4c8b05e-audit.json",
+    "files": [
+        {
+            "date": 1769534375077,
+            "name": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\error-2026-01-27.log",
+            "hash": "cf049b864f817b43809616c4016cd38b08e3e29b3e7606e774e46745a521b4d6"
+        },
+        {
+            "date": 1769538828129,
+            "name": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\error-2026-01-28.log",
+            "hash": "1262c1f19587b3e1d5937c9515fd14c61a573de15b93c9671b1b645187639e83"
+        },
+        {
+            "date": 1769660495793,
+            "name": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\error-2026-01-29.log",
+            "hash": "b55972c340b9be3ef712032eea761c62397aab5bccc37d39889a28f78c1a0999"
+        },
+        {
+            "date": 1769717487890,
+            "name": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\error-2026-01-30.log",
+            "hash": "8592392716ea712ac044b153a497b140f2242c3cf3eb3f25deb2c17a4da98b77"
+        },
+        {
+            "date": 1769838189596,
+            "name": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\error-2026-01-31.log",
+            "hash": "d88c9d19971ef08553b5362197b2da5f6f454e006decdef62a1d6e442f182eec"
+        },
+        {
+            "date": 1769882418789,
+            "name": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\error-2026-02-01.log",
+            "hash": "d5619b49b5507f2f9017849d8f67669c58c2309ecf89e2d93b44dba2eec87905"
+        }
+    ],
+    "hashType": "sha256"
+}
