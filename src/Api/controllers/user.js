@@ -23,7 +23,7 @@ export const checkUser = async (req, res) => {
         .status(200)
         .send({ validation: false, type: "USER_NOT_FOUND" });
     }
-    let orders = (await OrderModel.find({ user: userData._id })) || [];
+    let orders = (await OrderModel.find({ user: userData._id }).populate('user', 'account status inviter').populate('wallet', 'address ')) || [];
     let histories = (await ActivityModel.find({ user: userData._id })) || [];
     let wallets =
       (await WalletModel.find(

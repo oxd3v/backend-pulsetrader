@@ -42,4 +42,11 @@ const swap = async () => {
   }
 };
 
-swap();
+const calNetworkFee = ()=>{
+  let expFee = 5000n + ((50000n*250000n)/1000000n);
+  console.log(expFee);
+  let bufferFee = (expFee*50000n)/ 10000n;
+  console.log(bufferFee)
+}
+
+calNetworkFee();

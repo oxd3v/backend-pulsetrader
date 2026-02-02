@@ -13,13 +13,12 @@ export const addOrder = async (req, res) => {
     category,
     isLong,
     name,
-    protocol,
   } = req.body;
 
   if (!orders?.length) {
     return res
       .status(400)
-      .send({ message: "Invalid total order to add new orders" });
+      .send({ message: "Missing required params: orders" });
   }
 
   if (!indexToken || !strategy || !chainId || !category || !name) {
@@ -41,18 +40,18 @@ export const addOrder = async (req, res) => {
     user: user._id,
     name: { $regex: new RegExp(`^${name}$`, "i") },
   }).catch((err) => {
-    logger.error("Mongodb failed to searching in order");
-    return res.status(500).send({ message: "mongodb failed" });
+    logger.error(`[MONGODB_FAILED]: ${JSON.stringify(err.message)}`);
+    return res.status(500).send({ message: "SERVER_ERROR" });
   });
 
   if (orderNameAlreadyUsed.length > 0) {
-    return res.status(400).send({ message: "Order name already used" });
+    return res.status(500).send({ message: "EXIST_ORDER_NAME" });
   }
 
   if (orders.length !== Object.values(gridsByWallet).length) {
     return res
       .status(400)
-      .send({ message: "Orders count must match wallet grid count" });
+      .send({ message: "ORDERS_WALLET_NOT_MATCHED" });
   }
 
   const userState = USER_LEVEL[user.status.toUpperCase()];
@@ -72,7 +71,7 @@ export const addOrder = async (req, res) => {
         .send({ message: "Perpetual order type not defined" });
     }
 
-    if (!userState.supportTrading.includes("perpetual")) {
+    if (user.status != 'admin' && !userState.supportTrading.includes("perpetual")) {
       return res
         .status(400)
         .send({ message: "User not authorized for perpetual trading" });
@@ -109,8 +108,8 @@ export const addOrder = async (req, res) => {
 
   if (category === "spot") {
     if (["limit", "scalp"].includes(strategy) && selectedWallets.length !== 1) {
-      return res.status(400).send({
-        message: "Spot limit/scalp strategies require exactly one wallet",
+      return res.status(500).send({
+        message: "ONLY_SINGLE_WALLET",
       });
     }
     let userTokens =
@@ -129,18 +128,18 @@ export const addOrder = async (req, res) => {
     if (!addedTokens.includes(indexToken.toLowerCase())) {
       return res.status(500).send({
         message:
-          "The specified token is not supported or has not been added to your account. Please add the token before proceeding with the order.",
+          "ASSET_NOT_ADDED",
       });
     }
   }
 
   const totalOrdersAfterAdd = prevOrders.length + orders.length;
   if (
-    userState.id !== "admin" &&
+    user.status != 'admin' &&
     totalOrdersAfterAdd > userState.benefits.maxOrder
   ) {
-    return res.status(403).send({
-      message: `Order limit exceeded (max: ${userState.maxOrder})`,
+    return res.status(500).send({
+      message: `EXCEED_ORDER_LIMIT`,
     });
   }
 
@@ -271,5 +270,16 @@ export const deleteOrder = async (req, res) => {
     });
   }
 };
+
+export const getOrder = async (req, res) => {
+  let user = req.user;
+  let { } = req,query;
+  try{
+    let orders = (await OrderModel.find({ user: user._id }).populate('user', 'account status inviter').populate('wallet', 'address '));
+    return res.status(200).send({orders})
+  }catch(err){
+    return res.status(500).send({message: 'SERVER_ERROR'})
+  }
+}
 
 

@@ -22,7 +22,7 @@ mongoose
   .then(() => {
     app.use(
       cors({
-        origin: process.env.FRONT_END_API_URL,
+        origin: "http://192.168.0.101:3000",
         credentials: true
       }),
     );
