@@ -153,7 +153,7 @@ function compareValues(actual, operator, expected) {
 
 function evaluateTechnicalLogic(logic, candleData, tokenData) {
   if (!logic) return false;
-
+  
   // Group Node (AND/OR)
   if (logic.operator === "AND" || logic.operator === "OR") {
     const isAnd = logic.operator === "AND";
@@ -166,18 +166,18 @@ function evaluateTechnicalLogic(logic, candleData, tokenData) {
   }
 
   // Condition Node
-  const [indicatorName, compareValue] = logic.logics;
+  const {operator, id, type, period, threshold} = logic;
   const resolution = logic.resolution || "1";
   
   try {
     const config = TECHNICAL_ANALYSIS_RESOLUTION_CONFIG[resolution] || { base: "1", multiplier: parseInt(resolution) };
-    const source = candleData.candles[config.base];
+    const source = candleData[config.base];
     if (!source || !source.success) return false;
-
+    
     const candles = convertResolution(source, config.multiplier);
-    const actualValue = calculateIndicator(indicatorName, candles, logic.period, tokenData);
-
-    return compareValues(actualValue, logic.operator, compareValue);
+    const actualValue = calculateIndicator(id, candles, period, tokenData);
+    console.log(id, actualValue)
+    return compareValues(actualValue, operator, threshold);
   } catch (e) {
     return false;
   }

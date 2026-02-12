@@ -21,7 +21,7 @@ const ActivitySchema = new Schema(
     payToken: {
       type: Object,
     },
-    nativeFee: {
+    txFee: {
       type: Object,
     },
     indexToken: String,

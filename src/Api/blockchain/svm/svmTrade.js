@@ -15,7 +15,8 @@ import {
   handleSolanaWeb3Error,
 } from "../../lib/errorHandler/handleError.js";
 import {
-  DEFAULT_COMPUTE_UNIT,
+  SOLANA_BASE_FEE,
+  DEFAULT_SOLANA_PRIORITY_FEE,
   SOLANA_AGGREGATORS,
   ORDER_GAS_BUFFER,
   BASIS_POINT_DIVISOR_BIGINT,
@@ -24,8 +25,7 @@ import {
 // Constants
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const DEFAULT_PUBLIC_KEY = "11111111111111111111111111111111";
-const BASE_FEE = 5000n;
-const DEFAULT_PRIORITY_FEE = 30000n;
+const DEFAULT_COMPUTE_UNIT = 250000n;
 
 export async function getBestSwapRoute({
   tokenIn,
@@ -87,8 +87,8 @@ export async function getBestSwapRoute({
 
   // Sort by Best Output (Highest amountOut)
   return results.sort((a, b) => {
-    if (a.amountOut > b.amountOut) return -1;
-    if (a.amountOut < b.amountOut) return 1;
+    if (Number(a.amountOut) > Number(b.amountOut)) return -1;
+    if (Number(a.amountOut) < Number(b.amountOut)) return 1;
     return 0;
   });
 }
@@ -186,7 +186,7 @@ export async function getReceivedAmountFromTx(
 
       return {
         totalReceived: BigInt(received),
-        fee: feeLamports,
+        fee: BigInt(feeLamports),
       };
     }
 
@@ -208,10 +208,10 @@ export async function getReceivedAmountFromTx(
 
     return {
       totalReceived: received > 0n ? received : 0n,
-      fee: feeLamports,
+      fee: BigInt(feeLamports),
     };
   } catch (err) {
-    console.error("Error parsing tx amount:", err);
+    //console.error("Error parsing tx amount:", err);
     return { totalReceived: "0", fee: "0" };
   }
 }
@@ -289,7 +289,7 @@ export async function executeSolanaSwap({
     });
   }
 
-  const expFee = BASE_FEE + (computeUnits * DEFAULT_PRIORITY_FEE) / 1_000_000n;
+  const expFee = SOLANA_BASE_FEE + (computeUnits * DEFAULT_SOLANA_PRIORITY_FEE) / 1_000_000n;
   bufferGasFee = (expFee * ORDER_GAS_BUFFER) / BASIS_POINT_DIVISOR_BIGINT;
 
   let walletState = getWalletGuard(walletAddress);

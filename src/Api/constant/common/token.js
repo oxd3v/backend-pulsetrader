@@ -1,4 +1,5 @@
-import { chains } from "./chain.js"
+import { chains } from "./chain.js";
+import { ZeroAddress } from "ethers";
 
 
 export const CollateralTokens = {

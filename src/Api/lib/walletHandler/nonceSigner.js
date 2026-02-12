@@ -9,7 +9,7 @@ const CACHE_TTL = 2 * 86400000;
 export const getSignerFromNonceManager = (privateKey) => {
   try {
     // Validate inputs
-    
+
     if (!privateKey) {
       throw new Error("Invalid params to get signer");
     }
@@ -17,7 +17,7 @@ export const getSignerFromNonceManager = (privateKey) => {
     if (!tempWallet) {
       throw new Error("signer failed");
     }
-    const key = tempWallet.address.toLowerCase()
+    const key = tempWallet.address.toLowerCase();
 
     // Check cache with proper atomic update
     const entry = EVM_WALLET_NONCE_SIGHER_CACHE.get(key);
@@ -56,7 +56,7 @@ export const updateSignerFromNonceManager = (privateKey) => {
     if (!tempWallet) {
       throw new Error("signer failed");
     }
-    const key = tempWallet.address.toLowerCase()
+    const key = tempWallet.address.toLowerCase();
 
     const nonceManager = new NonceManager(tempWallet);
 
@@ -74,6 +74,16 @@ export const updateSignerFromNonceManager = (privateKey) => {
     return nonceManager;
   } catch (error) {
     throw new Error(`Failed to update signer: ${error.message}`);
+  }
+};
+
+export const updateNonce = (signer) => {
+  let provider = signer.provider;
+  if (provider) {
+    let signer = updateSignerFromNonceManager(signer.privateKey).connect(
+      provider,
+    );
+    return signer;
   }
 };
 

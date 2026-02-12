@@ -1,14 +1,16 @@
 import {
-  transferEVMNative,
-  transferEVMTokens,
+  evmNativeTransfer,
+  evmTokenTransfer,
   getEvmBalance,
   getEVMTokenBalance,
+  getEVMTxInfo
 } from "../evm/evmTransfer.js";
 import {
-  transferSolNative,
-  transferSOLTokens,
+  solNativeTransfer,
+  solTokenTransfer,
   getSolanaNativeBalance,
   getSolanaTokenBalance,
+  getSVMTxInfo
 } from "../svm/svmTransfer.js";
 import { chains } from "../../constant/common/chain.js";
 import { ZeroAddress } from "ethers";
@@ -16,9 +18,9 @@ import { ZeroAddress } from "ethers";
 export const transferNative = async ({ chainId, receiver, value, signer }) => {
   let details;
   if (chainId == chains.Solana) {
-    details = await transferSolNative({ chainId, receiver, value, KeyPair:signer });
+    details = await solNativeTransfer({ chainId, receiver, value, KeyPair:signer });
   } else {
-    details = await transferEVMNative({ chainId, receiver, value, signer });
+    details = await evmNativeTransfer({ chainId, receiver, value, signer });
   }
   return details;
 };
@@ -32,7 +34,7 @@ export const transferTokens = async ({
 }) => {
   let details;
   if (chainId == chains.Solana) {
-    details = await transferSOLTokens({
+    details = await solTokenTransfer({
       chainId,
       tokenAddress,
       receiver,
@@ -40,7 +42,7 @@ export const transferTokens = async ({
       KeyPair: signer,
     });
   } else {
-    details = await transferEVMTokens({
+    details = await evmTokenTransfer({
       chainId,
       tokenAddress,
       receiver,
@@ -104,3 +106,13 @@ export const getTokenBalance = async ({
   }
   return balance;
 };
+
+export const getTxInfoFromSignature = async ({Signature, chainId, receiver, sender, tokenOut})=>{
+  let txInfo ;
+ if(chains.Solana){
+    txInfo = getSVMTxInfo({Signature, chainId, receiver, sender, tokenOut})
+ }else{
+    txInfo = getEVMTxInfo({Signature, chainId, receiver, sender, tokenOut})
+ }
+ return txInfo;
+}

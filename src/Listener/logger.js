@@ -54,9 +54,9 @@ const consoleFormat = winston.format.combine(
 // Define transports
 const transports = [
   // Console transport
-  new winston.transports.Console({
-    format: consoleFormat,
-  }),
+  // new winston.transports.Console({
+  //   format: consoleFormat,
+  // }),
   // Error log file transport
   new winston.transports.DailyRotateFile({
     filename: path.join(__dirname, '../logs/error-%DATE%.log'),

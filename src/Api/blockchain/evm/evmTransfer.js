@@ -1,7 +1,11 @@
 import { getConnectionProvider } from "../../constant/common/chain.js";
-import { Interface, Contract, ethers } from "ethers";
-import { updateSignerFromNonceManager } from "../../lib/walletHandler/nonceSigner.js";
-import { handleEthersJsError, simpleRetryFn } from "../../lib/errorHandler/handleError.js";
+import { Interface, Contract, ethers, ZeroAddress, toBeHex } from "ethers";
+import { updateNonce } from "../../lib/walletHandler/nonceSigner.js";
+import {
+  handleEthersJsError,
+  simpleRetryFn,
+} from "../../lib/errorHandler/handleError.js";
+import logger from "../../logger.js";
 
 // Constant for maximum approval
 const APPROVE_INFINITY_AMOUNT = ethers.MaxUint256.toString();
@@ -14,7 +18,6 @@ const ERC20_ABI = [
   "function approve(address spender, uint256 amount) returns (bool)",
 ];
 
-
 export const sendEVMTransaction = async ({ signer, txData }) => {
   try {
     const tx = await signer.sendTransaction(txData);
@@ -22,10 +25,10 @@ export const sendEVMTransaction = async ({ signer, txData }) => {
   } catch (err) {
     // Check for nonce issues and attempt a single re-sync
     if (err.code === "NONCE_EXPIRED" || err.message?.includes("nonce")) {
-      const provider = signer.provider;
-      const newSigner = updateSignerFromNonceManager(signer.privateKey).connect(
-        provider,
-      );
+      const newSigner = updateNonce(signer);
+      if(!newSigner){
+        throw err;
+      }
       const tx = await newSigner.sendTransaction(txData);
       return await tx.wait();
     }
@@ -33,7 +36,6 @@ export const sendEVMTransaction = async ({ signer, txData }) => {
     throw err;
   }
 };
-
 
 export const sendEvmTxWithRetry = async ({ signer, txData, retry = 2 }) => {
   let attempts = 0;
@@ -55,7 +57,7 @@ export const sendEvmTxWithRetry = async ({ signer, txData, retry = 2 }) => {
   }
 };
 
-export const transferEVMNative = async ({
+export const evmNativeTransfer = async ({
   chainId,
   receiver,
   value,
@@ -63,14 +65,17 @@ export const transferEVMNative = async ({
 }) => {
   const provider = getConnectionProvider(chainId);
   const connectSigner = signer.connect(provider);
-  const receipt = await sendEVMTransaction({
+  const receipt = await sendEvmTxWithRetry({
     signer: connectSigner,
     txData: { to: receiver, value },
   });
-  return {signature: receipt.hash, fee: BigInt(receipt.gasUsed*receipt.gasPrice)}; 
+  return {
+    signature: receipt.hash,
+    fee: BigInt(receipt.gasUsed * (receipt.gasPrice || 0n)),
+  };
 };
 
-export const transferEVMTokens = async ({
+export const evmTokenTransfer = async ({
   chainId,
   tokenAddress,
   receiver,
@@ -82,13 +87,15 @@ export const transferEVMTokens = async ({
   const data = erc20Interface.encodeFunctionData("transfer", [receiver, value]);
 
   const connectSigner = signer.connect(provider);
-  const receipt = await sendEVMTransaction({
+  const receipt = await sendEvmTxWithRetry({
     signer: connectSigner,
     txData: { to: tokenAddress, data, value: "0" },
   });
-  return {signature: receipt.hash, fee: BigInt(receipt.gasUsed*receipt.gasPrice)};
+  return {
+    signature: receipt.hash,
+    fee: BigInt(receipt.gasUsed * ( receipt.gasPrice || 0n)),
+  };
 };
-
 
 export const approveInfinityAllowance = async ({
   tokenAddress,
@@ -97,38 +104,72 @@ export const approveInfinityAllowance = async ({
   amount,
   signer,
 }) => {
-  const contract = new Contract(tokenAddress, ERC20_ABI, signer);
+  const executionResult = {
+    allowance: false,
+    approve: null,
+    label: "TOKEN_ALLOWANCE",
+    error: null,
+  };
+  try {
+    const contract = new Contract(tokenAddress, ERC20_ABI, signer);
+    if (!contract) {
+      executionResult.error = 'CONTRACT_NOT_FOUND';
+      return executionResult;
+    }
+    // Single fetch for balance and allowance
+    const [balance, allowance] = await simpleRetryFn({
+      fn: () =>
+        Promise.all([
+          contract.balanceOf(owner),
+          contract.allowance(owner, spender),
+        ]),
+      retry: 3,
+    }).catch(err=>{
+      executionResult.error = 'BALANSE_CHECK_FAILED';
+      return executionResult;
+    });
 
-  // Single fetch for balance and allowance
-  const [balance, allowance] = await Promise.all([
-    contract.balanceOf(owner),
-    contract.allowance(owner, spender),
-  ]);
+    const amountBI = BigInt(amount);
 
-  const amountBI = BigInt(amount);
+    if (BigInt(balance) < amountBI) {
+      executionResult.error = 'INSUFFICIENT_FUND';
+      return executionResult;
+    }
 
-  if (BigInt(balance) < amountBI) {
-    throw new Error("Insufficient balance");
+    if (BigInt(allowance) < amountBI) {
+      const erc20Interface = new Interface(ERC20_ABI);
+      const data = erc20Interface.encodeFunctionData("approve", [
+        spender,
+        APPROVE_INFINITY_AMOUNT,
+      ]);
+
+      const txData = { to: tokenAddress, data, value: "0" };
+      const receipt = await sendEvmTxWithRetry({ signer, txData, retry: 2 }).catch(err=>{
+        const { message, shouldContinue} = handleEthersJsError(err)
+        executionResult.error = 'APPROVE_TX_FAILED';
+        if(shouldContinue){
+          executionResult.error = 'RETRY_TRANSACTION_FAILED';
+        }
+        return executionResult;
+      });
+      // Use effectiveGasPrice for EIP-1559 compatibility
+      const gasPrice = receipt.effectiveGasPrice || receipt.gasPrice || 0n;
+      const approveFee = receipt.gasUsed * gasPrice;
+      executionResult.allowance = true;
+      executionResult.approve = {
+        success: true,
+        signature: receipt.hash,
+        fee: approveFee,
+      };
+      return executionResult;
+    }
+
+    executionResult.allowance = true;
+    return executionResult;
+  } catch (err) {
+    executionResult.error = err.message;
+    return executionResult;
   }
-
-  if (BigInt(allowance) < amountBI) {
-    const erc20Interface = new Interface(ERC20_ABI);
-    const data = erc20Interface.encodeFunctionData("approve", [
-      spender,
-      APPROVE_INFINITY_AMOUNT,
-    ]);
-
-    const txData = { to: tokenAddress, data, value: "0" };
-    const receipt = await sendEvmTxWithRetry({ signer, txData, retry: 2 });
-
-    // Use effectiveGasPrice for EIP-1559 compatibility
-    const gasPrice = receipt.effectiveGasPrice || receipt.gasPrice || 0n;
-    const approveFee = receipt.gasUsed * gasPrice;
-
-    return { allowance: true, approve: true, tx: receipt, approveFee };
-  }
-
-  return { allowance: true, approve: false };
 };
 
 export const getEvmBalance = async ({ walletAddress, chainId }) => {
@@ -146,7 +187,12 @@ export const getEVMTokenBalance = async ({
   return await tokenContract.balanceOf(walletAddress);
 };
 
-export const createEVMTransferTxData = ({sender, receiver, tokenAddress, value }) => {
+export const createEVMTransferTxData = ({
+  sender,
+  receiver,
+  tokenAddress,
+  value,
+}) => {
   if (tokenAddress === ZeroAddress) {
     return {
       to: receiver,
@@ -169,11 +215,20 @@ export const createEVMTransferTxData = ({sender, receiver, tokenAddress, value }
   };
 };
 
-export async function getEVMTxInfo(txHash, chainId, receiver, tokenOut) {
+export async function getEVMTxInfo({
+  Signature,
+  chainId,
+  receiver,
+  sender,
+  tokenOut,
+}) {
   const provider = getConnectionProvider(chainId);
-  const receipt = await provider.getTransactionReceipt(txHash);
+  const receipt = await provider.getTransactionReceipt(Signature);
+  if(!receipt){
+    throw new Error("Transaction receipt not found");
+  }
   const gasUsed = receipt.gasUsed;
-  const gasPrice = receipt.gasPrice || tx.gasPrice;
+  const gasPrice =  receipt.gasPrice || 0n;
   const gasCost = gasUsed * gasPrice;
   let totalReceived;
   if (tokenOut == ZeroAddress) {

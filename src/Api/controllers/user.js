@@ -10,152 +10,413 @@ import {
   generateWallet,
   encryptPrivateKeyForFrontend,
 } from "../lib/walletHandler/generate.js";
+import { isEVMAddress } from "../blockchain/common/utility.js";
 import { withdraw } from "../lib/transfer/withdraw.js";
+import {
+  verifyToken,
+  extractAddressFromToken,
+} from "../lib/middleware/auth.js";
+import {
+  DEFAULT_CONNECTION_EXPIRATION,
+  DEFAULT_INVITATION_EXPIRY,
+  USER_LEVEL,
+} from "../constant/common/user.js";
+import logger from "../logger.js";
+
+export const validateParams = (params, requiredFields) => {
+  const missing = requiredFields.filter((field) => !params[field]);
+
+  if (missing.length > 0) {
+    return {
+      message: "MISSING_PARAMS",
+      type: missing.join(", "),
+      error: missing,
+    };
+  }
+
+  return null;
+};
 
 export const checkUser = async (req, res) => {
-  let { userAccount } = req.query;
   try {
-    let userData = await UserModel.findOne({
-      account: { $regex: userAccount, $options: "i" },
-    });
-    if (!userData) {
-      return res
-        .status(200)
-        .send({ validation: false, type: "USER_NOT_FOUND" });
+    const token = req.cookies?.auth_token;
+    if (!token) {
+      return res.status(500).json({ connect: false, error: "UNAUTHENTICATED" });
     }
-    let orders = (await OrderModel.find({ user: userData._id }).populate('user', 'account status inviter').populate('wallet', 'address ')) || [];
-    let histories = (await ActivityModel.find({ user: userData._id })) || [];
-    let wallets =
-      (await WalletModel.find(
-        { user: userData._id },
-        { encryptedWalletKey: 0 },
-      )) || [];
-    return res.status(200).send({
-      validation: true,
-      user: { userData, orders, histories, wallets },
+    let { address, error, type } = extractAddressFromToken(token);
+    if (!address) {
+      return res.status(500).json({ connect: false, error: "UNAUTHENTICATED" });
+    }
+    const user = await UserModel.findOne({
+      account: { $regex: new RegExp(`^${address}$`, "i") },
+    }).lean();
+    // Execute queries in parallel for better performance
+    const [orders, histories, wallets] = await Promise.all([
+      OrderModel.find({ user: user._id })
+        .populate("user", "account status inviter")
+        .populate("wallet", "address")
+        .lean(),
+      ActivityModel.find({ user: user._id }).lean(),
+      WalletModel.find({ user: user._id }, { encryptedWalletKey: 0 }).lean(),
+    ]);
+
+    return res.status(200).json({
+      connect: true,
+      user: {
+        userData: {
+          ...user,
+          // sensitiveInfo: undefined // Explicitly exclude sensitive data
+        },
+        orders,
+        histories,
+        wallets,
+      },
     });
   } catch (err) {
-    return res.status(500).send({ type: "SERVER_ERROR" });
+    //logger.error("Check user error", { error: err.message, userId: req.user?._id });
+    return res.status(500).json({
+      success: false,
+      message: "SERVER_ERROR",
+      type: 1,
+    });
+  }
+};
+
+export const connect = async (req, res) => {
+  const { account, encryptedToken } = req.body;
+  // Validate required parameters
+  const validationError = validateParams({ account, encryptedToken }, [
+    "account",
+    "encryptedToken",
+  ]);
+  if (validationError) {
+    return res.status(400).json(validationError);
+  }
+
+  // Verify token
+  const verificationResult = verifyToken(encryptedToken, account);
+  if (!verificationResult.verified) {
+    return res.status(401).json({
+      success: false,
+      message: verificationResult.message,
+      type: verificationResult.type || null,
+    });
+  }
+
+  try {
+    // Find user
+    const user = await UserModel.findOne({
+      account: { $regex: new RegExp(`^${account}$`, "i") },
+    }).lean();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "USER_NOT_FOUND",
+      });
+    }
+
+    // Parallel queries for performance
+    const [orders, histories, wallets] = await Promise.all([
+      OrderModel.find({ user: user._id })
+        .populate("user", "account status inviter")
+        .populate("wallet", "address")
+        .lean(),
+      ActivityModel.find({ user: user._id }).lean(),
+      WalletModel.find({ user: user._id }, { encryptedWalletKey: 0 }).lean(),
+    ]).catch((err) => {
+      res.status(500).json({
+        success: false,
+        message: "SERVER_ERROR",
+        type: 2,
+      });
+    });
+
+    try {
+      // Set secure cookie
+      res.cookie("auth_token", encryptedToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: DEFAULT_CONNECTION_EXPIRATION,
+        domain: process.env.COOKIE_DOMAIN || undefined,
+      });
+    } catch (err) {
+      res.status(500).json({
+        success: false,
+        message: "AUTHENTICATION_FAILED",
+        type: 101,
+      });
+    }
+
+    return res.status(200).json({
+      connect: true,
+      user: {
+        userData: {
+          ...user,
+        },
+        orders,
+        histories,
+        wallets,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: "SERVER_ERROR",
+      type: 1,
+    });
   }
 };
 
 export const join = async (req, res) => {
-  let account = req.account;
-  let { signUpMethod, invitationCode } = req.body;
-  try {
-    let userData = await UserModel.findOne({
-      account: { $regex: account, $options: "i" },
+  const { account, signUpMethod, invitationCode, encryptedToken } = req.body;
+
+  // Validate required parameters
+  const validationError = validateParams({ signUpMethod, encryptedToken }, [
+    "signUpMethod",
+    "encryptedToken",
+  ]);
+  if (validationError) {
+    return res.status(400).json(validationError);
+  }
+
+  // Verify token
+  const verificationResult = verifyToken(encryptedToken, account);
+  if (!verificationResult.verified) {
+    return res.status(401).json({
+      success: false,
+      message: verificationResult.message,
+      type: verificationResult.type || null,
     });
-    if (userData) {
-      return res.status(200).send({
-        joining: false,
-        type: "USER_EXIST",
-        message: "User already joined!",
+  }
+
+  try {
+    // Check if user already exists
+    const existingUser = await UserModel.findOne({
+      account: { $regex: new RegExp(`^${account}$`, "i") },
+    });
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: "USER_ALREADY_EXISTS",
       });
     }
-    userData = new UserModel({
+
+    let user = new UserModel({
       account,
     });
-    let verifyAndUpdate = await checkRequirements({
+
+    // Check join requirements
+    const verifyAndUpdate = await checkRequirements({
       method: signUpMethod,
-      user: userData,
+      user,
       option: { invitationCode },
+    }).catch((err) => {
+      return res.status(403).json({
+        success: false,
+        message: "UNAUTHORIZED_USER",
+        type: 88,
+      });
     });
-    if (verifyAndUpdate.success == false) {
-      return res.status(500).send({
-        joining: false,
-        type: "UNAUTHORIZED",
-        message: verifyAndUpdate.error || "Authorization failed",
+
+    if (!verifyAndUpdate.success) {
+      return res.status(403).json({
+        success: false,
+        message: "UNAUTHORIZED_USER",
+        type: 89,
+        //details: verifyAndUpdate.error,
       });
     }
-    userData.silver = verifyAndUpdate.update.status;
-    userData.inviter = verifyAndUpdate.update.inviter;
-    await userData.save();
+
+    // Create new user
+    user.status = verifyAndUpdate.update.status;
+    user.inviter = verifyAndUpdate.update.inviter;
+    await user.save();
+
+    // Generate wallets (fire and forget for better response time)
+    generateWallet({
+      user,
+      previousWallets: [],
+      evmWalletCounts: 3,
+      svmWalletCounts: 2,
+    }).catch((err) => {
+      logger.error(
+        `NEW_USER_WALLET_GENERATE_FAILED%userId:${user._id}%error:${err.message || JSON.stringify(err)}`,
+      );
+    });
+    // Get wallets without sensitive data
+    const wallets = await WalletModel.find(
+      { user: user._id },
+      { encryptedWalletKey: 0 },
+    ).lean();
 
     try {
-      await generateWallet({
-        user: userData,
-        previousWallets: [],
-        evmWalletCounts: 3,
-        svmWalletCounts: 2,
+      // Set secure cookie
+      res.cookie("auth_token", encryptedToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: DEFAULT_CONNECTION_EXPIRATION,
+        domain: process.env.COOKIE_DOMAIN || undefined,
       });
-    } catch (err) {}
+    } catch (err) {
+      res.status(500).json({
+        success: false,
+        message: "AUTHENTICATION_FAILED",
+        type: 101,
+      });
+    }
 
-    let wallets =
-      (await WalletModel.find(
-        { user: userData._id },
-        { encryptedWalletKey: 0 },
-      )) || [];
-    return res.status(200).send({
-      joining: true,
-      user: { userData, orders: [], histories: [], wallets },
+    return res.status(201).json({
+      connect: true,
+      user: {
+        userData: {
+          ...user.toObject(),
+          //sensitiveInfo: undefined
+        },
+        orders: [],
+        histories: [],
+        wallets,
+      },
     });
   } catch (err) {
-    return res.status(500).send({
-      joining: false,
-      type: "SERVER_ERROR",
+    return res.status(500).json({
+      success: false,
+      message: "SERVER_ERROR",
+      type: 1,
     });
   }
 };
 
-export const getEncryptedPrivateKey = async (req, res) => {
+export const disconnectUser = async (req, res) => {
   let user = req.user;
-  let { walletAddress } = req.query;
+  res.cookie("auth_token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    domain: process.env.COOKIE_DOMAIN || undefined,
+  });
+  return res.status(200).json({ message: "DISCONNECTED" });
+};
+
+export const getEncryptedPrivateKey = async (req, res) => {
+  const user = req.user;
+  const { walletAddress } = req.query;
+
   if (!walletAddress) {
-    return res.status(400).send({ message: "required wallet address" });
-  }
-  try {
-    let key = await encryptPrivateKeyForFrontend({
-      address: walletAddress,
-      userId: user._id,
+    return res.status(400).json({
+      success: false,
+      message: "MISSING_PARAMS",
     });
-    return res.status(200).send({ key });
+  }
+
+  try {
+    // Verify wallet belongs to user
+    const wallet = await WalletModel.findOne({
+      address: { $regex: new RegExp(`^${walletAddress}$`, "i") },
+      user: user._id,
+    });
+
+    if (!wallet) {
+      return res.status(403).json({
+        success: false,
+        message: "WALLET_NOT_FOUND_OR_UNAUTHORIZED",
+      });
+    }
+
+    const key = await encryptPrivateKeyForFrontend(wallet.encryptedWalletKey);
+
+    return res.status(200).json({
+      success: true,
+      data: { key },
+    });
   } catch (err) {
-    return res
-      .status(500)
-      .send({ message: err.message || "wallet private key fetching failed" });
+    return res.status(500).json({
+      success: false,
+      message: "SERVER_ERROR",
+      type: 1,
+    });
   }
 };
 
 export const createInvitationCode = async (req, res) => {
   try {
     const user = req.user;
-    const { invitedTo, expireAt, status = "silver" } = req.body;
-
-    // 1. Validation
-    if (!invitedTo) {
-      return res
-        .status(400)
-        .send({ message: "Missing required field: invitedTo" });
+    const { invitedTo, expireAt, status = "silver", maxUses = 1 } = req.body;
+    const validationError = validateParams({ invitedTo }, ["invitedTo"]);
+    if (validationError) {
+      return res.status(400).json(validationError);
     }
 
-    // 2. Encode the code
-    // Ensure expireAt is a valid date or default to 7 days from now
+    if (!isEVMAddress(invitedTo)) {
+      return res.status(400).json({
+        success: false,
+        message: "INVALID_INVITATION_SENDER_ADDRESS",
+        validStatuses,
+      });
+    }
+
+    // Validate status
+    const validStatuses = ["silver", "gold", "platinum"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "INVALID_STATUS",
+      });
+    }
+
+    let invitedUser = await UserModel.findOne({
+      account: { $regex: new RegExp(`^${invitedTo}$`, "i") },
+    }).lean();
+
+    if (invitedUser) {
+      return res.status(500).json({
+        success: false,
+        message: "ALREADY_USER",
+      });
+    }
+    // Set expiration date
     const expirationDate = expireAt
-      ? new Date(expireAt)
-      : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      ? expireAt
+      : Date.now() + DEFAULT_INVITATION_EXPIRY;
+
+    // Validate expiration is in the future
+    if (typeof expirationDate != "number" || expirationDate <= Date.now()) {
+      return res.status(400).json({
+        success: false,
+        message: "EXPIRATION_MUST_BE_FUTURE",
+      });
+    }
 
     const invitationCodeDetails = encodeInvitationCode({
-      invitedTo,
       expireAt: expirationDate,
-      metadata: { status },
+      metadata: {
+        status,
+        createdBy: user._id,
+        to: invitedTo,
+      },
     });
 
-    // 3. Database Update
-    // FIX: $push must be the key, followed by the field to update
-    const updateResult = await UserModel.updateOne(
+    let updatedUser = await UserModel.findOneAndUpdate(
       { _id: user._id },
-      { $push: { invitationCodes: invitationCodeDetails.invitationCode } },
+      { $addToSet: { invitationCodes: invitationCodeDetails.invitationCode } },
+      { new: true },
     );
 
-    return res.status(200).send({
-      code: invitationCodeDetails.invitationCode,
-      message: "Successfully created invitation code",
+    return res.status(200).json({
+      success: true,
+      data: {
+        code: invitationCodeDetails.invitationCode,
+        user: updatedUser,
+      },
     });
   } catch (err) {
-    return res
-      .status(500)
-      .send({ message: "Invitation creation failed", type: "SERVER_ERROR" });
+    return res.status(500).json({
+      success: false,
+      message: "SERVER_ERROR",
+      type: 1,
+    });
   }
 };
 
@@ -164,38 +425,57 @@ export const deleteInvitationCode = async (req, res) => {
     const user = req.user;
     const { code } = req.body;
 
-    // 1. Validation
     if (!code) {
-      return res.status(400).send({ message: "Missing required field: code" });
-    }
-    let isCodeExist =
-      Array.isArray(user.invitationCodes) &&
-      user.invitationCodes.includes(code);
-
-    if (!isCodeExist) {
-      return res.status(200).send({
-        message: "Code isnt exist in user invitation codes",
-        type: "INVITATION_NOT_EXIST",
+      return res.status(400).json({
+        success: false,
+        message: "MISSING_PARAMS",
       });
     }
-    // 3. Database Update
-    // FIX: $push must be the key, followed by the field to update
-    await UserModel.updateOne(
+
+    // Check if code exists
+    const codeExists = user.invitationCodes?.some(
+      (invCode) => invCode === code,
+    );
+
+    if (!codeExists) {
+      return res.status(404).json({
+        success: false,
+        message: "CODE_NOT_FOUND",
+      });
+    }
+
+    // Remove code
+    const result = await UserModel.updateOne(
       { _id: user._id },
       { $pull: { invitationCodes: code } },
     );
 
-    return res.status(200).send({
-      message: "Successfully remove invitation code",
+    if (result.modifiedCount === 0) {
+      return res.status(500).json({
+        success: false,
+        message: "REMOVE_FAILED",
+      });
+    }
+
+    // logger.info("Invitation code deleted", { userId: user._id, code });
+
+    return res.status(200).json({
+      success: true,
+      message: "INVITATION_CODE_DELETED",
     });
   } catch (err) {
-    return res.status(500).send({ message: "Invitation code removed failed" });
+    //console.log(err);
+    return res.status(500).json({
+      success: false,
+      message: "SERVER_ERROR",
+      type: 1,
+    });
   }
 };
 
 export const withdrawBalance = async (req, res) => {
-  let user = req.user;
-  let {
+  const user = req.user;
+  const {
     receiver,
     tokenAddress,
     chainId,
@@ -204,103 +484,234 @@ export const withdrawBalance = async (req, res) => {
     tokenDecimals,
     tokenSymbol,
   } = req.body;
-  if (
-    !receiver ||
-    !tokenAddress ||
-    !chainId ||
-    !walletAddress ||
-    !tokenDecimals ||
-    !tokenSymbol
-  ) {
-    return res.status(400).send({
-      message: `Missing required field: ${!receiver ? "reaceiver" : ""} ${value ? (Number(value) == 0 ? "invalid value" : "") : "value"}  ${!tokenAddress ? "tokenaAddress" : ""} ${!chainId ? "chainId" : ""} ${!walletAddress ? "walletAddress" : ""} ${!tokenDecimals ? "tokenDecimals" : ""} ${!tokenSymbol ? "tokenSymbol" : ""}   params`,
+
+  // Validate all required parameters
+  const requiredParams = [
+    "receiver",
+    "tokenAddress",
+    "chainId",
+    "value",
+    "walletAddress",
+    "tokenDecimals",
+    "tokenSymbol",
+  ];
+
+  const validationError = validateParams(req.body, requiredParams);
+  if (validationError) {
+    return res.status(400).json(validationError);
+  }
+
+  // Validate value
+  const numericValue = Number(value);
+  if (isNaN(numericValue) || numericValue <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: "INVALID_AMOUNT",
     });
   }
-  if (Number(value) == 0) {
-    return res.status(400).send({
-      message: `Invalid field: value`,
-    });
-  }
+
   try {
-    let walletData = await WalletModel.findOne({
-      address: { $regex: walletAddress, $options: "i" },
+    // Verify wallet belongs to user
+    const walletData = await WalletModel.findOne({
+      address: { $regex: new RegExp(`^${walletAddress}$`, "i") },
       user: user._id,
     });
-    await withdraw({
+
+    if (!walletData) {
+      return res.status(403).json({
+        success: false,
+        message: "WALLET_NOT_FOUND_OR_UNAUTHORIZED",
+      });
+    }
+
+    // Execute withdrawal
+    const withdrawalResult = await withdraw({
       walletData,
       chainId,
       receiver,
-      value,
+      value: numericValue,
       tokenAddress,
       tokenSymbol,
       tokenDecimals,
       user,
+    }).catch((err) => {
+      return res.status(500).json({
+        success: false,
+        message: err.message.toLowerCase().includes("insufficient")
+          ? "INSUFFICIENT_BALANCE"
+          : "TRANSFER_FAILED",
+        type: 1,
+      });
     });
-    return res
-      .status(200)
-      .send({ success: true, message: "Successfully withdraw asset" });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        transactionHash: withdrawalResult.signature,
+        message: "SUCESS",
+      },
+    });
   } catch (err) {
-    return res.status(500).send({ type: "WITHDRAW_FAILED" });
+    return res.status(500).json({
+      success: false,
+      message: "SERVER_ERROR",
+      type: 1,
+    });
   }
 };
 
 export const createNewWallet = async (req, res) => {
   const user = req.user;
-  const { evmWallets, svmWallets } = req.body;
-  if (evmWallets == 0 && svmWallets == 0) {
-    return res
-      .status(400)
-      .send({
-        message: `Invalid field: ${evmWallets == 0 ? "evmWallets" : ""} ${svmWallets == 0 ? "svmWallets" : ""}`,
-      });
+  const { evmWallets = 0, svmWallets = 0 } = req.body;
+
+  // Validate input
+  if (
+    (evmWallets <= 0 && svmWallets <= 0) ||
+    evmWallets < 0 ||
+    svmWallets < 0
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "INVALID_WALLET_COUNT",
+    });
   }
-  let previousWallets = (await WalletModel.find({ user: user._id })) || [];
+  // Get existing wallets
+  const previousWallets = await WalletModel.find({ user: user._id }).catch(
+    (err) => {
+      return res.status(500).json({
+        success: false,
+        message: "SERVER_ERROR",
+        type: 2,
+      });
+    },
+  );
+
   try {
-    await generateWallet({
+    // Generate new wallets
+    generateWallet({
       user,
       previousWallets,
       evmWalletCounts: evmWallets,
       svmWalletCounts: svmWallets,
     });
-    let wallets = await WalletModel.find({ user: user._id });
-    return res.status(200).send({ wallets, message: "Successfully created" });
   } catch (err) {
-    return res
-      .status(500)
-      .send({ message: "Wallet creation failed", type: "SERVER_ERROR" });
+    return res.status(500).json({
+      success: false,
+      message: "WALLET_GENERATE_FAILED",
+    });
   }
+
+  let wallets = [];
+  wallets = await WalletModel.find(
+    { user: user._id },
+    { encryptedWalletKey: 0 },
+  )
+    .lean()
+    .catch((err) => {});
+
+  return res.status(201).json({
+    success: true,
+    data: { wallets },
+  });
 };
 
 export const addToken = async (req, res) => {
-  let user = req.user;
-  let { tokenAddress, chainId } = req.body;
-  if (!tokenAddress || !chainId) {
-    return res
-      .status(400)
-      .send({
-        message: `Missing required params: ${!tokenAddress ? "tokenAddress" : ""} ${!chainId ? "chainId" : ""}`,
-        type: "MISSING_PARAMS",
-      });
+  const user = req.user;
+  const { tokenAddress, chainId } = req.body;
+  
+  const validationError = validateParams({ tokenAddress, chainId }, [
+    "tokenAddress",
+    "chainId",
+  ]);
+  if (validationError) {
+    return res.status(400).json(validationError);
   }
+
   try {
-    let tokenKey = `${tokenAddress}:${chainId}`;
-    const isIncluded = array.some(
-      (item) => item.toLowerCase() === search.toLowerCase(),
+    const tokenKey = `${tokenAddress}:${chainId}`;
+    // Check if token already exists in user's asset list
+    const isIncluded = user.assetes?.some(
+      (asset) => asset.toLowerCase() === tokenKey.toLowerCase(),
     );
+
     if (isIncluded) {
-      return res
-        .status(200)
-        .send({
-          message: "Token is already exist in user asset",
-          type: "TOKEN_EXIST",
-        });
+      return res.status(200).json({
+        success: false,
+        message: "TOKEN_ALREADY_ADDED",
+      });
     }
-    await UserModel.updateOne(
+
+    if(user.status != 'admin'){
+      let userStatusMaxAccessAsset = USER_LEVEL[user.status.toUpperCase()]?.benefits?.maxAccessAsset || 5;
+      let totalAdded = user.assetes.length;
+      if(totalAdded+1 > userStatusMaxAccessAsset){
+        return res.status(200).json({
+        success: false,
+        message: "MAX_ACCED_ASSET_ACCESS",
+      });
+      }
+    }
+
+    // Add token to user's assets
+    let updatedUser = await UserModel.findOneAndUpdate(
       { _id: user._id },
-      { assetes: { $push: tokenKey } },
+      { $addToSet: { assetes: tokenKey } },
+      { new: true },
     );
-    return res.status(200).send({ message: "Token added successfully" });
+
+    
+
+    //logger.info("Token added to user assets", { userId: user._id, tokenKey });
+
+    return res.status(200).json({
+      success: true,
+      message: "TOKEN_ADDED_SUCCESSFULLY",
+      user: updatedUser
+    });
   } catch (err) {
-    return res.status(500).send({ message: "User token addition failed" });
+    //logger.error("Add token error", { error: err.message, userId: user._id, tokenAddress, chainId });
+    return res.status(500).json({
+      success: false,
+      message: "SERVER_ERROR",
+      type: 1,
+    });
+  }
+};
+
+// Optional: Add pagination for large datasets
+export const getUserHistory = async (req, res) => {
+  try {
+    const user = req.user;
+    const { page = 1, limit = 50 } = req.query;
+    const skip = (page - 1) * limit;
+
+    const [histories, total] = await Promise.all([
+      ActivityModel.find({ user: user._id })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      ActivityModel.countDocuments({ user: user._id }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        histories,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      },
+    });
+  } catch (err) {
+    //logger.error("Get user history error", { error: err.message, userId: req.user?._id });
+    return res.status(500).json({
+      success: false,
+      message: "SERVER_ERROR",
+      type: 1,
+    });
   }
 };

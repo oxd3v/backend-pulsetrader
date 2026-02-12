@@ -1,3 +1,5 @@
+import { chains } from "./chain.js";
+
 export const PRECISION_DECIMALS = 30;
 export const BASIS_POINT_DIVISOR = 10000;
 export const BASIS_POINT_DIVISOR_BIGINT = 10000n;
@@ -43,6 +45,37 @@ export const INDICATORS_KEY = [
   { id: "Holders", name: "Holders", type: "Market" }
 ];
 
+export const  DEFAULT_GAS_PRICE = {
+  [chains.Avalanche]: BigInt(2000000000),
+  [chains.Ethereum]: BigInt(1000000000),
+  [chains.Solana]: BigInt(10000000),
+  [chains.Arbitrum]: BigInt(90000000),
+}
+
+export const GAS_LIMIT = {
+  ["PERPETUAL"]: {
+    ["GMX"]: {
+      increaseOrderGasLimit: BigInt(6000000),
+      decreaseOrderGasLimit: BigInt(7000000),
+    },
+  },  
+  ["SPOT"]: {
+    [chains.Avalanche]: BigInt(5500000), // with transfer gas limit
+    [chains.Solana]: BigInt(350000), // with transfer gas limit
+    [chains.Ethereum]: BigInt(1500000), // with transfer gas limit
+    [chains.Arbitrum]: BigInt(2500000), // with transfer gas limit
+  },
+};
+
+export const GAS_BUFFER = {
+  [chains.Avalanche]: 50000,
+  [chains.Ethereum]: 20000,
+  [chains.Solana]: 50000,
+  [chains.Arbitrum]: 40000,
+};
+
+export const ORDER_TRADE_FEE_EXEMPT_STATUS = Object.freeze(['admin'])
+
 export const EVM_AGGREGATORS = Object.freeze([
   "okx",
   "joe",
@@ -51,12 +84,13 @@ export const EVM_AGGREGATORS = Object.freeze([
   "kyber",
 ]);
 export const SOLANA_AGGREGATORS = Object.freeze(["okx", "jupiter"]);
-export const DEFAULT_PRIORITY_FEE = 30_000n;
-export const DEFAULT_COMPUTE_UNIT = 250_000n;
-export const BASE_FEE = 5000n;
-
+export const SOLANA_BASE_FEE = 5000n;
+export const DEFAULT_SOLANA_PRIORITY_FEE = 50_000n
 export const ORDER_TRADE_FEE = 10n; // 0.1%
+export const ORDER_PRIORITY_FEE = 10n; // 0.1%
 export const SOLANA_ORDER_TRADE_FEE_COLLECTOR = 'BLvk55ch6uWM2j9YUX9pUfmfbuA8CWdXuDMZ3og3J4RN';
 export const EVM_ORDER_TRADE_FEE_COLLECTOR = '0xfe7AB0137C85c9f05d03d69a35865277EA64DEba';
 export const ORDER_GAS_BUFFER = 15000n;
+export const ORDER_AGGREGATOR_SWAP_RESULT_FETCHING_TIMEOUT = 10000;
+export const MINIMUM_COLLATERAL_USD = 10n**BigInt(PRECISION_DECIMALS);
 

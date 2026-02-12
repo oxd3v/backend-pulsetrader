@@ -1,11 +1,7 @@
 import {
   startOrderListening,
-  stopOrderListening,
+  stopOrderListening
 } from "../../Listener/listen/order/listener.js";
-import {
-  startTokenListening,
-  stopTokenListening,
-} from "../../Listener/listen/token.js";
 
 export const switchOrderListening = async (req, res) => {
   let user = req.user;

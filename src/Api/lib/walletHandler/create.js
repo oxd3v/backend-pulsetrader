@@ -35,12 +35,12 @@ export const createWalletFromMnemonic = async (accountIndex = 0, chainType) => {
   }
 };
 
-export const createRandomWallet = async (chainType) => {
+export const createRandomWallet =  (chainType) => {
   let wallet;
   if (chainType == "EVM") {
-    wallet = await createRandomEVMWallet();
+    wallet =  createRandomEVMWallet();
   } else {
-    wallet = await createRandomSVMWallet();
+    wallet =  createRandomSVMWallet();
   }
 
   return wallet;
@@ -93,7 +93,7 @@ const createSVMWalletFromMnemoic = async (accountIndex) => {
   };
 };
 
-const createRandomEVMWallet = async () => {
+const createRandomEVMWallet =  () => {
   let wallet = Wallet.createRandom();
   return {
     address: wallet.address,
@@ -101,7 +101,7 @@ const createRandomEVMWallet = async () => {
   };
 };
 
-const createRandomSVMWallet = async () => {
+const createRandomSVMWallet =  () => {
   const keyPair = Keypair.generate();
   return {
     address: keyPair.publicKey.toBase58(),

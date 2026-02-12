@@ -6,39 +6,14 @@
     "auditLog": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\.88f64f8c9041b12af4ae154ce94a1dee5e3f8986-audit.json",
     "files": [
         {
-            "date": 1769534375079,
-            "name": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\combined-2026-01-27.log",
-            "hash": "e011ac7886844010bc463d040bb965968c8c607656e5c6119742c41811d16edd"
+            "date": 1770747761745,
+            "name": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\combined-2026-02-11.log",
+            "hash": "86ee4f4112f31a2a6ac80677783b069518c73398b2393a7a0ba6fc10e8999ece"
         },
         {
-            "date": 1769538828131,
-            "name": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\combined-2026-01-28.log",
-            "hash": "4d27a8dcf68c5c00e5311c1e955f46293459eece04677bc245f8a93b6f0f0f4a"
-        },
-        {
-            "date": 1769660495795,
-            "name": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\combined-2026-01-29.log",
-            "hash": "6aedefeb32ef43a56c9e137815aa7e0fa4317240006a6ef44cbbee685a5894c2"
-        },
-        {
-            "date": 1769717487892,
-            "name": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\combined-2026-01-30.log",
-            "hash": "e83e92df9288816e7644ffce04a3c3bd1373642a2e106129437e5b63116d3c5a"
-        },
-        {
-            "date": 1769838189599,
-            "name": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\combined-2026-01-31.log",
-            "hash": "d8fb08a3921d51ec586b50261454d13187ac483c03a5e3a315a327fde80b617a"
-        },
-        {
-            "date": 1769882418791,
-            "name": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\combined-2026-02-01.log",
-            "hash": "a31103cad93fac8d3aedbfb98fe5fde04610964227012be98a71d1bb37aa4c69"
-        },
-        {
-            "date": 1769975776915,
-            "name": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\combined-2026-02-02.log",
-            "hash": "7c90494621f43dee051e96b06a2cbe9fa675a47fdee100d583944807eaa598c5"
+            "date": 1770832962131,
+            "name": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\combined-2026-02-12.log",
+            "hash": "ac84f910c1b104d5d6702fbc57d347c56e294170da022f560c28f80a6bc1e0f3"
         }
     ],
     "hashType": "sha256"

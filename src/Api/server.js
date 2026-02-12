@@ -2,10 +2,15 @@ import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
 import bodyParser from "body-parser";
+import cookieParser from 'cookie-parser';
 import "dotenv/config";
 
 import OrderRoute from "../Api/routes/order.js";
 import UserRoute from "../Api/routes/user.js";
+
+
+import { startTokenListening } from "../Listener/listen/token.js";
+import { startOrderListening } from '../Listener/listen/order/listener.js';
 
 const app = express();
 const port = process.env.API_PORT;
@@ -26,9 +31,11 @@ mongoose
         credentials: true
       }),
     );
+    app.use(cookieParser());
     app.use(bodyParser.json({ limit: "20mb" }));
     app.use(bodyParser.urlencoded({ limit: "20mb", extended: true }));
-
+    startTokenListening();
+    startOrderListening();
     // Health check route
     app.get("/", (req, res) => {
       res.send("Hello from pulse-trader order api server");

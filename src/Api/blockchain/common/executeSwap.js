@@ -10,6 +10,7 @@ export const executeSwap = async ({
   chainId,
   connectionProvider,
   signer,
+  option
 }) => {
   let executionResult;
   if (chains.Solana == chainId) {
@@ -21,6 +22,7 @@ export const executeSwap = async ({
       chainId,
       connection: connectionProvider,
       keyPair: signer,
+      option
     });
   }else{
     let connectedSigner = signer.connect(connectionProvider);
@@ -32,6 +34,7 @@ export const executeSwap = async ({
       chainId,
       provider: connectionProvider,
       signer: connectedSigner,
+      option
     });
   }
   return executionResult

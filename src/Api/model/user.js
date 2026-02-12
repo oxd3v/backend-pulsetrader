@@ -22,7 +22,7 @@ const UserSchema = new Schema(
       type: Date,
       default: 0,
     },
-    isBlock: {
+    isBlocked: {
       type: Boolean,
       default: false,
     },

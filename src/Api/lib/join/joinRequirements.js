@@ -14,6 +14,7 @@ import {
 } from "../../constant/common/user.js";
 import STAKE_ABI from "../../constant/abis/stake.js";
 import { Contract, ethers, formatUnits } from "ethers";
+import logger from "../../logger.js";
 import "dotenv/config";
 
 const INVITATION_CODE_SECURITY = process.env.INVITATION_CODE_SECURE_KEY;
@@ -40,6 +41,7 @@ export const checkRequirements = async ({ method, user, option }) => {
   } catch (error) {
     return {
       success: false,
+      message: 'UNAUTHORIZED',
       error: error.message,
     };
   }
@@ -49,11 +51,11 @@ export const handleInvitationCode = async ({ invitationCode, user }) => {
   const invitationDetails = decodeInvitationCode(invitationCode);
   // Validate expiration
   if (invitationDetails.expireAt && invitationDetails.expireAt < Date.now()) {
-    throw new Error("Expired invitation code");
+    throw new Error("CODE_EXPIRED");
   }
   // Validate recipient
-  if (invitationDetails.to.toLowerCase() !== user.account.toLowerCase()) {
-    throw new Error("Unauthorized account to join");
+  if (invitationDetails.metadata.to.toLowerCase() !== user.account.toLowerCase()) {
+    throw new Error("INVALID_ACCOUNT");
   }
   const inviterUser = await UserModel.findOne({
     invitationCodes: invitationCode,
@@ -61,11 +63,11 @@ export const handleInvitationCode = async ({ invitationCode, user }) => {
     logger.error(
       `[MONGO_DB_FAILED]: Finding inviter failed. in join request invited => ${invitationDetails.to} and code => ${invitationCode}`,
     );
-    throw new Error("Inviter finding failed");
+    throw new Error("SERVER_ERROR");
   });
 
   if (!inviterUser) {
-    throw new Error("Invalid or already used invitation code");
+    throw new Error("NO_INVITER");
   }
 
   // Atomic findOneAndUpdate to prevent race conditions
@@ -86,7 +88,7 @@ export const handleInvitationCode = async ({ invitationCode, user }) => {
     logger.error(
       `[MONGO_DB_FAILED]: Update inviter data failed. in join request inviterId => ${inviterUser._id} and code => ${invitationCode}`,
     );
-    throw new Error("Update inviter data failed");
+    throw new Error("SERVER_ERROR");
   });
 
   return {
@@ -96,26 +98,10 @@ export const handleInvitationCode = async ({ invitationCode, user }) => {
 };
 
 export const encodeInvitationCode = ({
-  invitedTo,
-  expireAt = null,
-  metadata = {
-    status: "silver",
-  },
+  expireAt,
+  metadata,
 }) => {
-  if (!invitedTo) {
-    throw new Error("Invitation sender is required");
-  }
-
-  if (typeof expireAt !== "number") {
-    expireAt = new Date(expireAt).getTime();
-  }
-
-  if (!expireAt) {
-    expireAt = Date.now() + DEFAULT_INVITATION_EXPIRY;
-  }
-
   const invitationCardObject = {
-    to: invitedTo,
     expireAt,
     metadata,
   };
@@ -128,7 +114,7 @@ export const encodeInvitationCode = ({
 
     let encodeInvitationCode = {
       code: invitationCode,
-      to: invitedTo,
+      to: metadata.to,
       expireAt,
       status: metadata.status,
     };
@@ -138,20 +124,16 @@ export const encodeInvitationCode = ({
     return {
       success: true,
       invitationCode: code,
-      expiresAt: expireAt,
-      invitedTo,
     };
   } catch (error) {
-    logger.error(
-      `[ENCODE_INVITATION_FAILED]: err: ${JSON.stringify(error.message)}`,
-    );
-    throw new Error("Failed to encode invitation code");
+    logger.error(`[ENCODE_INVITATION_FAILED]: err: ${JSON.stringify(error.message)}`);
+    throw new Error("ENCRYPTION_FAILED");
   }
 };
 
 export const decodeInvitationCode = (invitationCode) => {
   if (!invitationCode) {
-    throw new Error("Required invitation code");
+    throw new Error("INVITATION_NOT_FOUND");
   }
 
   try {
@@ -161,16 +143,14 @@ export const decodeInvitationCode = (invitationCode) => {
     const invitationDetails = JSON.parse(decryptedData);
 
     // Validate decoded data structure
-    if (!invitationDetails.to || !invitationDetails.metadata?.status) {
-      throw new Error("Invalid invitation code format");
+    if (!invitationDetails.metadata?.to || !invitationDetails.metadata?.status || !invitationDetails.metadata?.createdBy || !invitationDetails.expireAt) {
+      throw new Error("INVALID_FORMATE");
     }
 
     return invitationDetails;
   } catch (error) {
-    logger.error(
-      `[INVITATION_DECRYPTION_FAILED]: ${JSON.stringify(error.message)}`,
-    );
-    throw new Error("Failed to decode invitation code");
+    logger.error(`[INVITATION_DECRYPTION_FAILED]: ${JSON.stringify(error.message)}`);
+    throw new Error("DECODE_FAILED");
   }
 };
 
@@ -190,7 +170,7 @@ const handleGladiatorStake = async ({ user }) => {
     logger.error(
       `[GLADIATOR_STAKE_RETRIEVE_FAILED]: err: ${JSON.stringify(err.message)}`,
     );
-    throw new Error("Failed to track gladiator stake");
+    throw new Error("CONTRACT");
   }
 };
 

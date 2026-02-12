@@ -16,6 +16,8 @@ import {
   TransactionMessage,
 } from "@solana/web3.js";
 import { handleSolanaWeb3Error } from "../../lib/errorHandler/handleError.js";
+import { getConnectionProvider } from "../../constant/common/chain.js";
+import { getReceivedAmountFromTx } from "./svmTrade.js"
 
 export const getSolanaNativeBalance = async ({ walletAddress, chainId }) => {
   const connection = new Connection("https://solana.drpc.org", {
@@ -58,14 +60,13 @@ export const getSolanaTokenBalance = async ({
   return BigInt(accountData.amount.toString());
 };
 
-export async function transferSOLTokens({
+export async function solTokenTransfer({
   chainId,
   tokenAddress,
   receiver,
   value,
   KeyPair,
 }) {
-  console.log('svm', tokenAddress, receiver, value, KeyPair);
   const connection = new Connection(
     "https://api.mainnet-beta.solana.com",
     "confirmed",
@@ -122,7 +123,7 @@ export async function transferSOLTokens({
   return { signature, fee: BigInt(fee) };
 }
 
-export async function transferSolNative({ chainId, receiver, value, KeyPair }) {
+export async function solNativeTransfer({ chainId, receiver, value, KeyPair }) {
   const connection = new Connection("https://solana-rpc.publicnode.com", {
     commitment: "confirmed",
     confirmTransactionInitialTimeout: 30000, // 30 seconds
@@ -300,3 +301,8 @@ export const sendSvmTxWithRetry = async ({
     }
   }
 };
+
+export const getSVMTxInfo = async ({Signature, chainId, receiver, sender, tokenOut})=>{
+  let connection = getConnectionProvider(chainId);
+  return getReceivedAmountFromTx(connection, sender, tokenOut, Signature)
+}

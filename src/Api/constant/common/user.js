@@ -74,6 +74,7 @@ export const userDeafultTokens = [
 ]
 
 export const DEFAULT_INVITATION_EXPIRY = 604800000;
+export const DEFAULT_CONNECTION_EXPIRATION = 604800000;
 
 export const PULSETRADER_URL = "pulsetrader.net";
 

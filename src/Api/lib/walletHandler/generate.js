@@ -22,8 +22,8 @@ export const getWalletCount = async (status) => {
   };
 };
 
-export const createNewWallet = async (networkType, userId) => {
-  const walletObj = await createRandomWallet(networkType);
+export const createNewWallet =  (networkType, userId) => {
+  const walletObj =  createRandomWallet(networkType);
 
   return WalletModal.create({
     user: userId,
@@ -33,23 +33,17 @@ export const createNewWallet = async (networkType, userId) => {
   });
 };
 
-export const createWallets = async ({ evmWallets, svmWallets }, user) => {
-  const tasks = [];
+export const createWallets =  ({ evmWallets, svmWallets }, user) => {
 
   // Use a helper loop to push tasks into the array
   const pushTasks = (count, type) => {
     for (let i = 0; i < count; i++) {
-      tasks.push(createNewWallet(type, user._id));
+      createNewWallet(type, user._id);
     }
   };
 
   if (evmWallets > 0) pushTasks(evmWallets, "EVM");
   if (svmWallets > 0) pushTasks(svmWallets, "SVM");
-
-  // Execute all creations in parallel for maximum performance
-  if (tasks.length > 0) {
-    await Promise.all(tasks);
-  }
 };
 
 export const generateWallet = async ({
@@ -58,39 +52,40 @@ export const generateWallet = async ({
   evmWalletCounts,
   svmWalletCounts,
 }) => {
+  let creationResult = {
+    success: false,
+    error: null
+  }
   if (user.status != 'admin') {
     let userLevel = USER_LEVEL[user.status.toUpperCase()];
+    if(!userLevel){
+      creationResult.error = "INVALID_USER_STATUS";
+      return creationResult;
+    }
     let presentEVMWalletCount =
-      previousWallets.filter((w) => w.network == "EVM") + evmWalletCounts;
+      previousWallets.filter((w) => w.network == "EVM").length + evmWalletCounts;
     let presentSVMWalletCount =
-      previousWallets.filter((w) => w.network == "SVM") + svmWalletCounts;
+      previousWallets.filter((w) => w.network == "SVM").length + svmWalletCounts;
 
     if (
-      presentEVMWalletCount > userLevel.maxEVMWallets ||
-      presentSVMWalletCount > userLevel.maxSVMWallets
+      presentEVMWalletCount > userLevel.benefits.maxEVMWallets ||
+      presentSVMWalletCount > userLevel.benefits.maxSVMWallets
     ) {
-      throw new Error("Max Wallet exceed!");
+      creationResult.error = "WALLET_COUNT_EXCEED";
+      return creationResult;
     }
   }
 
-  await createWallets(
+  createWallets(
     { evmWallets: evmWalletCounts, svmWallets: svmWalletCounts },
     user,
   );
+  creationResult.success = true;
+  return creationResult;
 };
 
-export const encryptPrivateKeyForFrontend = async ({ address, userId }) => {
-  let WalletData = await WalletModal.findOne({
-    address: { $regex: walletAddress, $options: "i" },
-    user: userId,
-  });
-  if (!WalletData) {
-    throw new Error("wallet not found");
-  }
-  if (!WalletData.encryptedWalletKey) {
-    throw new Error("invalid wallet");
-  }
-  let privateKey = decryptWalletKey(WalletData.encryptedWalletKey);
+export const encryptPrivateKeyForFrontend = async (encryptedKey) => {
+  let privateKey = decryptWalletKey(encryptedKey);
   let encryptedPrivateKey = encrypt(privateKey, FRONT_END_SECURITY);
   return encryptedPrivateKey;
 };
