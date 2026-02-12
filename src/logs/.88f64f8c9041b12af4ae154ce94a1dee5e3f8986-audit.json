@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\.88f64f8c9041b12af4ae154ce94a1dee5e3f8986-audit.json",
+    "files": [
+        {
+            "date": 1770884071602,
+            "name": "D:\\pulseTrader\\AiTrading\\pulseBackend\\src\\logs\\combined-2026-02-12.log",
+            "hash": "4af79f6d94cfe81470abb808df66c31274ae8ea8643da233552f0c1334243cf5"
+        }
+    ],
+    "hashType": "sha256"
+}
